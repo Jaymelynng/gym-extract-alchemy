@@ -114,13 +114,16 @@ Respond in JSON format:
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'gpt-4.1-2025-04-14',
         messages: [
-          { role: 'system', content: 'You are a smart document organizer. Analyze files and suggest optimal categorization and folder structures.' },
+          { 
+            role: 'system', 
+            content: 'You are an expert document organizer with deep understanding of file types and content categorization. Analyze files intelligently and suggest precise categorization with thoughtful folder structures. Focus on being specific and useful rather than generic.' 
+          },
           { role: 'user', content: prompt }
         ],
-        temperature: 0.3,
-        max_tokens: 500
+        temperature: 0.2,
+        max_tokens: 800
       }),
     });
 
