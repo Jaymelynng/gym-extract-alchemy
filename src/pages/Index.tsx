@@ -11,7 +11,7 @@ import UploadSection from '@/components/UploadSection';
 import JobHistory from '@/components/JobHistory';
 import { useProcessingSteps } from '@/hooks/useProcessingSteps';
 import { DetectedTopic, ExtractionOptions as ExtractionOptionsType, AppStep } from '@/types';
-import { mockResults } from '@/data/mockResults';
+import { useJobHistory } from '@/hooks/useJobHistory';
 
 
 const Index = () => {
@@ -24,6 +24,7 @@ const Index = () => {
   const [extractionPlan, setExtractionPlan] = useState<string[]>([]);
   const [totalContent, setTotalContent] = useState(0);
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
+  const [generatedResults, setGeneratedResults] = useState<any[]>([]);
 
   const {
     processingSteps,
@@ -32,6 +33,8 @@ const Index = () => {
     overallProgress,
     isComplete
   } = useProcessingSteps();
+
+  const { getJobFiles } = useJobHistory();
 
   const handleFileSelect = (file: File) => {
     setSelectedFile(file);
@@ -60,7 +63,8 @@ const Index = () => {
     }
   };
 
-  const handleAutonomousComplete = () => {
+  const handleAutonomousComplete = async (results: any[]) => {
+    setGeneratedResults(results);
     setCurrentStep('results');
   };
 
@@ -155,10 +159,17 @@ const Index = () => {
       {currentStep === 'results' && (
         <div className="max-w-6xl mx-auto px-4 py-12 space-y-8">
           <ResultsDownload
-            results={mockResults}
-            onDownloadFile={(url, name) => console.log('Download file:', name)}
-            onDownloadCategory={(id) => console.log('Download category:', id)}
-            onDownloadAll={() => console.log('Download all')}
+            results={generatedResults}
+            onDownloadFile={(url, name) => window.open(url, '_blank')}
+            onDownloadCategory={async (id) => {
+              const categoryFiles = generatedResults.find(r => r.id === id)?.files || [];
+              categoryFiles.forEach(file => window.open(file.downloadUrl, '_blank'));
+            }}
+            onDownloadAll={() => {
+              generatedResults.forEach(result => 
+                result.files.forEach((file: any) => window.open(file.downloadUrl, '_blank'))
+              );
+            }}
             onShare={(id) => console.log('Share category:', id)}
           />
           <JobHistory />

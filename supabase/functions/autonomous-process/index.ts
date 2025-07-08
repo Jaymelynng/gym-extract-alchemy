@@ -83,37 +83,47 @@ serve(async (req) => {
 
     // Generate and store files for each content type
     const contentCategories = [
-      { id: 'social-media', title: 'Social Media Content', description: 'Ready-to-post content with hashtags' },
-      { id: 'ai-chunks', title: 'AI-Ready Chunks', description: 'Perfect for ChatGPT and Claude' },
-      { id: 'summaries', title: 'Topic Summaries', description: 'Concise overviews and key points' }
+      { id: 'social-media', title: 'Social Media Content', description: 'Ready-to-post content with hashtags', icon: 'Smartphone' },
+      { id: 'ai-chunks', title: 'AI-Ready Chunks', description: 'Perfect for ChatGPT and Claude', icon: 'Bot' },
+      { id: 'summaries', title: 'Topic Summaries', description: 'Concise overviews and key points', icon: 'FileText' }
     ];
 
     const generatedResults = [];
 
     for (const category of contentCategories) {
       const categoryFiles = [];
+      let totalSizeBytes = 0;
       
       for (const result of results) {
         // Create file content based on category
         let fileContent = '';
         let fileExtension = 'txt';
+        let contentType = 'text/plain';
         
         if (category.id === 'social-media') {
-          fileContent = `Social Media Content for: ${result.topic}\n\n${result.content}\n\n#contentcreation #AI #topics`;
+          fileContent = `Social Media Content for: ${result.topic}\n\n${result.content}\n\n#contentcreation #AI #topics #${result.type}`;
         } else if (category.id === 'ai-chunks') {
-          fileContent = result.content;
+          fileContent = JSON.stringify({
+            topic: result.topic,
+            content: result.content,
+            type: result.type,
+            keywords: [],
+            created_at: new Date().toISOString()
+          }, null, 2);
           fileExtension = 'json';
+          contentType = 'application/json';
         } else {
-          fileContent = `Summary: ${result.topic}\n\n${result.content.substring(0, 500)}...`;
+          const summary = result.content.substring(0, 500);
+          fileContent = `Topic Summary: ${result.topic}\n\nContent Type: ${result.type}\n\nSummary:\n${summary}${result.content.length > 500 ? '...' : ''}`;
         }
 
-        const fileName = `${result.topic.toLowerCase().replace(/\s+/g, '_')}_${category.id}.${fileExtension}`;
-        const filePath = `${jobId || 'unknown'}/${category.id}/${fileName}`;
+        const fileName = `${result.topic.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${category.id}.${fileExtension}`;
+        const filePath = `${jobId}/${category.id}/${fileName}`;
         
         // Upload to Supabase Storage
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from('document-processing')
-          .upload(filePath, new Blob([fileContent], { type: 'text/plain' }), {
+          .upload(filePath, new Blob([fileContent], { type: contentType }), {
             cacheControl: '3600',
             upsert: true
           });
@@ -123,6 +133,9 @@ serve(async (req) => {
           const { data: { publicUrl } } = supabase.storage
             .from('document-processing')
             .getPublicUrl(filePath);
+
+          const fileSizeKB = Math.round(fileContent.length / 1024);
+          totalSizeBytes += fileContent.length;
 
           // Store metadata in database
           await supabase
@@ -135,26 +148,31 @@ serve(async (req) => {
               file_name: fileName,
               file_path: filePath,
               file_type: fileExtension,
-              file_size: `${Math.round(fileContent.length / 1024)} KB`
+              file_size: `${fileSizeKB} KB`
             });
 
           categoryFiles.push({
             name: fileName,
             type: fileExtension,
-            size: `${Math.round(fileContent.length / 1024)} KB`,
+            size: `${fileSizeKB} KB`,
             downloadUrl: publicUrl
           });
+        } else {
+          console.error(`Failed to upload ${fileName}:`, uploadError);
         }
       }
 
-      generatedResults.push({
-        id: category.id,
-        title: category.title,
-        description: category.description,
-        fileCount: categoryFiles.length,
-        totalSize: `${Math.round(categoryFiles.reduce((acc, file) => acc + parseInt(file.size), 0))} KB`,
-        files: categoryFiles
-      });
+      if (categoryFiles.length > 0) {
+        generatedResults.push({
+          id: category.id,
+          title: category.title,
+          description: category.description,
+          icon: category.icon,
+          fileCount: categoryFiles.length,
+          totalSize: `${Math.round(totalSizeBytes / 1024)} KB`,
+          files: categoryFiles
+        });
+      }
     }
 
     console.log('Autonomous processing completed successfully');

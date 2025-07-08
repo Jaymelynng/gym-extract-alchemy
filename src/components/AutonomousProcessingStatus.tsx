@@ -29,7 +29,7 @@ interface DetectedTopic {
 interface AutonomousProcessingStatusProps {
   topics: DetectedTopic[];
   jobId?: string;
-  onComplete: () => void;
+  onComplete: (results: any[]) => void;
 }
 
 const AutonomousProcessingStatus: React.FC<AutonomousProcessingStatusProps> = ({ 
@@ -105,7 +105,7 @@ const AutonomousProcessingStatus: React.FC<AutonomousProcessingStatusProps> = ({
         setIsComplete(true);
         
         setTimeout(() => {
-          onComplete();
+          onComplete(data.results || []);
         }, 1500);
 
       } catch (err) {

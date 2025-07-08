@@ -11,14 +11,15 @@ import {
   Award,
   Clock,
   FolderOpen,
-  Share2
+  Share2,
+  File
 } from 'lucide-react';
 
 interface ExtractionResult {
   id: string;
   title: string;
   description: string;
-  icon: React.ReactNode;
+  icon?: React.ReactNode | string;
   fileCount: number;
   totalSize: string;
   files: Array<{
@@ -47,6 +48,22 @@ const ResultsDownload: React.FC<ResultsDownloadProps> = ({
   const totalFiles = results.reduce((sum, result) => sum + result.fileCount, 0);
   const totalCategories = results.length;
 
+  const getIconComponent = (icon: React.ReactNode | string | undefined) => {
+    if (typeof icon === 'string') {
+      switch (icon) {
+        case 'Smartphone':
+          return <Smartphone className="h-5 w-5" />;
+        case 'Bot':
+          return <Bot className="h-5 w-5" />;
+        case 'FileText':
+          return <FileText className="h-5 w-5" />;
+        default:
+          return <File className="h-5 w-5" />;
+      }
+    }
+    return icon || <File className="h-5 w-5" />;
+  };
+
   const getTypeIcon = (type: string) => {
     switch (type) {
       case 'pdf':
@@ -66,27 +83,38 @@ const ResultsDownload: React.FC<ResultsDownloadProps> = ({
   return (
     <div className="space-y-6">
       {/* Summary Header */}
-      <Card className="bg-gradient-primary text-primary-foreground">
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="text-2xl">Extraction Complete! 🎉</CardTitle>
-              <p className="opacity-90">
-                {totalFiles} files extracted across {totalCategories} categories
-              </p>
+      {totalFiles > 0 ? (
+        <Card className="bg-gradient-primary text-primary-foreground">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-2xl">Extraction Complete! 🎉</CardTitle>
+                <p className="opacity-90">
+                  {totalFiles} files extracted across {totalCategories} categories
+                </p>
+              </div>
+              <Button 
+                variant="secondary" 
+                size="lg"
+                onClick={onDownloadAll}
+                className="bg-white/20 hover:bg-white/30"
+              >
+                <Download className="h-4 w-4" />
+                Download All
+              </Button>
             </div>
-            <Button 
-              variant="secondary" 
-              size="lg"
-              onClick={onDownloadAll}
-              className="bg-white/20 hover:bg-white/30"
-            >
-              <Download className="h-4 w-4" />
-              Download All
-            </Button>
-          </div>
-        </CardHeader>
-      </Card>
+          </CardHeader>
+        </Card>
+      ) : (
+        <Card className="bg-muted/20">
+          <CardHeader>
+            <CardTitle className="text-xl">No Files Generated Yet</CardTitle>
+            <p className="text-muted-foreground">
+              Content processing is in progress. Files will appear here once generation is complete.
+            </p>
+          </CardHeader>
+        </Card>
+      )}
 
       {/* Categories */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -96,7 +124,7 @@ const ResultsDownload: React.FC<ResultsDownloadProps> = ({
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-3">
                   <div className="p-2 rounded-lg bg-primary/10 text-primary">
-                    {result.icon}
+                    {getIconComponent(result.icon)}
                   </div>
                   <div>
                     <CardTitle className="text-lg">{result.title}</CardTitle>
