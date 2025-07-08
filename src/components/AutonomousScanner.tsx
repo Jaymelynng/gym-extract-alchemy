@@ -1,8 +1,10 @@
+
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { supabase } from '@/integrations/supabase/client';
 import { 
   Brain, 
   Zap, 
@@ -13,8 +15,8 @@ import {
   Heart,
   TrendingUp,
   FileText,
-  Image,
-  Hash
+  Hash,
+  AlertCircle
 } from 'lucide-react';
 
 interface DetectedTopic {
@@ -42,117 +44,120 @@ const AutonomousScanner: React.FC<AutonomousScannerProps> = ({ file, onComplete 
   const [detectedTopics, setDetectedTopics] = useState<DetectedTopic[]>([]);
   const [currentAnalysis, setCurrentAnalysis] = useState('');
   const [detectedLanguages, setDetectedLanguages] = useState<string[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
   const phases = [
     {
       icon: <Globe className="h-5 w-5" />,
-      title: 'Language & Document Analysis',
-      description: 'Detecting languages and document structure...'
+      title: 'File Processing',
+      description: 'Reading and extracting content...'
     },
     {
       icon: <Brain className="h-5 w-5" />,
-      title: 'AI Topic Discovery',
-      description: 'Discovering topics using advanced NLP...'
+      title: 'AI Analysis',
+      description: 'GPT-4.1 analyzing content structure...'
+    },
+    {
+      icon: <Eye className="h-5 w-5" />,
+      title: 'Topic Discovery',
+      description: 'Identifying topics and themes...'
     },
     {
       icon: <Heart className="h-5 w-5" />,
-      title: 'Sentiment & Content Analysis',
-      description: 'Analyzing emotional tone and content patterns...'
+      title: 'Content Classification',
+      description: 'Analyzing sentiment and content type...'
     },
     {
       icon: <Sparkles className="h-5 w-5" />,
-      title: 'Smart Deduplication',
-      description: 'Removing duplicates while preserving context...'
-    },
-    {
-      icon: <TrendingUp className="h-5 w-5" />,
-      title: 'Extraction Planning',
+      title: 'Planning Extraction',
       description: 'Creating optimal extraction strategy...'
     }
   ];
 
-  const mockTopics: DetectedTopic[] = [
-    {
-      name: 'Gymnastics Training',
-      confidence: 95,
-      keywords: ['gymnastics', 'training', 'skills', 'routines', 'balance'],
-      pages: [1, 2, 5, 8, 12],
-      contentType: 'gymnastics',
-      sentiment: 'positive',
-      language: 'en'
-    },
-    {
-      name: 'Business Strategy',
-      confidence: 87,
-      keywords: ['business', 'strategy', 'growth', 'planning', 'success'],
-      pages: [15, 18, 22, 25],
-      contentType: 'business',
-      sentiment: 'positive',
-      language: 'en'
-    },
-    {
-      name: 'Storytelling Techniques',
-      confidence: 82,
-      keywords: ['story', 'narrative', 'character', 'plot', 'writing'],
-      pages: [30, 35, 40],
-      contentType: 'storytelling',
-      sentiment: 'positive',
-      language: 'en'
-    },
-    {
-      name: 'Financial Freedom',
-      confidence: 78,
-      keywords: ['financial', 'freedom', 'investment', 'money', 'wealth'],
-      pages: [45, 48, 52],
-      contentType: 'financial',
-      sentiment: 'positive',
-      language: 'en'
-    }
-  ];
-
   useEffect(() => {
-    const runScan = async () => {
-      for (let phase = 0; phase < phases.length; phase++) {
-        setCurrentPhase(phase);
-        setCurrentAnalysis(phases[phase].description);
+    const runAnalysis = async () => {
+      try {
+        setError(null);
         
-        // Simulate phase processing
-        for (let i = 0; i <= 100; i += 10) {
-          setProgress((phase * 100 + i) / phases.length);
-          await new Promise(resolve => setTimeout(resolve, 150));
-          
-          // Add discoveries gradually
-          if (phase === 0 && i === 50) {
-            setDetectedLanguages(['English', 'Spanish']);
-          }
-          if (phase === 1 && i >= 30) {
-            const topicsToAdd = Math.floor((i - 30) / 20);
-            setDetectedTopics(mockTopics.slice(0, topicsToAdd + 1));
+        // Phase 1: File Processing
+        setCurrentPhase(0);
+        setCurrentAnalysis('Uploading and processing file...');
+        setProgress(10);
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        // Phase 2: AI Analysis
+        setCurrentPhase(1);
+        setCurrentAnalysis('GPT-4.1 analyzing document content...');
+        setProgress(30);
+
+        const { data, error: apiError } = await supabase.functions.invoke('process-document', {
+          body: formData,
+        });
+
+        if (apiError) {
+          throw new Error(`Analysis failed: ${apiError.message}`);
+        }
+
+        if (data.error) {
+          throw new Error(data.error);
+        }
+
+        // Phase 3: Topic Discovery
+        setCurrentPhase(2);
+        setCurrentAnalysis('Discovering topics and themes...');
+        setProgress(50);
+
+        // Simulate gradual topic discovery
+        if (data.topics && data.topics.length > 0) {
+          for (let i = 0; i < data.topics.length; i++) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+            setDetectedTopics(data.topics.slice(0, i + 1));
+            setProgress(50 + (i / data.topics.length) * 20);
           }
         }
-      }
-      
-      // Complete the scan
-      setProgress(100);
-      setCurrentAnalysis('Analysis complete! Generating extraction plan...');
-      
-      setTimeout(() => {
+
+        // Phase 4: Content Classification
+        setCurrentPhase(3);
+        setCurrentAnalysis('Analyzing sentiment and content patterns...');
+        setProgress(75);
+
+        if (data.languages) {
+          setDetectedLanguages(data.languages);
+        }
+
+        // Phase 5: Planning
+        setCurrentPhase(4);
+        setCurrentAnalysis('Creating extraction plan...');
+        setProgress(90);
+
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        // Complete
+        setProgress(100);
+        setCurrentAnalysis('Analysis complete!');
+
+        // Pass results to parent
         onComplete({
-          topics: mockTopics,
-          extractionPlan: [
-            'Social media content with topic-specific hashtags',
-            'AI-ready chunks preserving topic context',
-            'Topic-specific databases and quick references',
-            'Sentiment-optimized content for different audiences',
-            'Cross-topic relationship mapping',
-            'Multi-language content separation'
+          topics: data.topics || [],
+          extractionPlan: data.extractionPlan || [
+            'AI-ready content chunks',
+            'Topic-specific summaries',
+            'Social media content',
+            'Keyword databases'
           ],
-          totalContent: 247
+          totalContent: data.totalContent || 0
         });
-      }, 1000);
+
+      } catch (err) {
+        console.error('Analysis error:', err);
+        setError(err instanceof Error ? err.message : 'Analysis failed');
+        setCurrentAnalysis('Analysis failed - please try again');
+      }
     };
 
-    runScan();
+    runAnalysis();
   }, [file, onComplete]);
 
   const getTopicIcon = (contentType: string) => {
@@ -178,14 +183,25 @@ const AutonomousScanner: React.FC<AutonomousScannerProps> = ({ file, onComplete 
         <CardHeader className="text-center">
           <CardTitle className="flex items-center justify-center gap-2 text-2xl">
             <Brain className="h-6 w-6 text-primary animate-pulse" />
-            Autonomous AI Content Scanner
+            AI Document Analysis
           </CardTitle>
           <p className="text-muted-foreground">
-            AI is analyzing "{file.name}" to discover all topics and content automatically
+            GPT-4.1 is analyzing "{file.name}" to discover topics and extract content
           </p>
         </CardHeader>
         
         <CardContent className="space-y-6">
+          {error && (
+            <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 text-red-600 mt-0.5" />
+                <div className="text-sm text-red-800">
+                  <strong>Analysis Error:</strong> {error}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Progress Overview */}
           <div className="space-y-3">
             <div className="flex justify-between text-sm">
@@ -260,7 +276,7 @@ const AutonomousScanner: React.FC<AutonomousScannerProps> = ({ file, onComplete 
                         <span className="text-lg">{getTopicIcon(topic.contentType)}</span>
                         <span className="font-medium">{topic.name}</span>
                         <Badge variant="outline" className="text-xs">
-                          {topic.language.toUpperCase()}
+                          {topic.language?.toUpperCase() || 'EN'}
                         </Badge>
                       </div>
                       <div className="flex items-center gap-2">
@@ -274,11 +290,11 @@ const AutonomousScanner: React.FC<AutonomousScannerProps> = ({ file, onComplete 
                     <div className="flex items-center gap-4 text-xs text-muted-foreground">
                       <span className="flex items-center gap-1">
                         <FileText className="h-3 w-3" />
-                        {topic.pages.length} pages
+                        {topic.pages?.length || 1} pages
                       </span>
                       <span className="flex items-center gap-1">
                         <Hash className="h-3 w-3" />
-                        {topic.keywords.slice(0, 3).join(', ')}
+                        {topic.keywords?.slice(0, 3).join(', ') || 'analyzing...'}
                       </span>
                       <Badge 
                         variant={topic.sentiment === 'positive' ? 'default' : 'secondary'}
