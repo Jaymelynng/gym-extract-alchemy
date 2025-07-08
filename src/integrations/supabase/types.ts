@@ -14,148 +14,64 @@ export type Database = {
   }
   public: {
     Tables: {
-      detected_topics: {
+      documents: {
         Row: {
-          confidence: number
-          content_type: string
-          created_at: string
-          id: string
-          job_id: string
-          keywords: string[]
-          language: string
-          name: string
-          pages: number[]
-          sentiment: string
-        }
-        Insert: {
-          confidence: number
-          content_type: string
-          created_at?: string
-          id?: string
-          job_id: string
-          keywords?: string[]
-          language?: string
-          name: string
-          pages?: number[]
-          sentiment: string
-        }
-        Update: {
-          confidence?: number
-          content_type?: string
-          created_at?: string
-          id?: string
-          job_id?: string
-          keywords?: string[]
-          language?: string
-          name?: string
-          pages?: number[]
-          sentiment?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "detected_topics_job_id_fkey"
-            columns: ["job_id"]
-            isOneToOne: false
-            referencedRelation: "processing_jobs"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      generated_content: {
-        Row: {
-          category: string
-          created_at: string
-          description: string | null
+          ai_category: string | null
+          ai_summary: string | null
+          ai_tags: string[] | null
+          duplicate_of: string | null
+          file_hash: string
           file_name: string
           file_path: string
-          file_size: string
+          file_size: number
           file_type: string
+          folder_path: string | null
           id: string
-          job_id: string
-          title: string
-          topic_id: string | null
+          is_duplicate: boolean | null
+          original_file_name: string
+          upload_date: string
         }
         Insert: {
-          category: string
-          created_at?: string
-          description?: string | null
+          ai_category?: string | null
+          ai_summary?: string | null
+          ai_tags?: string[] | null
+          duplicate_of?: string | null
+          file_hash: string
           file_name: string
           file_path: string
-          file_size: string
+          file_size: number
           file_type: string
+          folder_path?: string | null
           id?: string
-          job_id: string
-          title: string
-          topic_id?: string | null
+          is_duplicate?: boolean | null
+          original_file_name: string
+          upload_date?: string
         }
         Update: {
-          category?: string
-          created_at?: string
-          description?: string | null
+          ai_category?: string | null
+          ai_summary?: string | null
+          ai_tags?: string[] | null
+          duplicate_of?: string | null
+          file_hash?: string
           file_name?: string
           file_path?: string
-          file_size?: string
+          file_size?: number
           file_type?: string
+          folder_path?: string | null
           id?: string
-          job_id?: string
-          title?: string
-          topic_id?: string | null
+          is_duplicate?: boolean | null
+          original_file_name?: string
+          upload_date?: string
         }
         Relationships: [
           {
-            foreignKeyName: "generated_content_job_id_fkey"
-            columns: ["job_id"]
+            foreignKeyName: "documents_duplicate_of_fkey"
+            columns: ["duplicate_of"]
             isOneToOne: false
-            referencedRelation: "processing_jobs"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "generated_content_topic_id_fkey"
-            columns: ["topic_id"]
-            isOneToOne: false
-            referencedRelation: "detected_topics"
+            referencedRelation: "documents"
             referencedColumns: ["id"]
           },
         ]
-      }
-      processing_jobs: {
-        Row: {
-          autonomous_mode: boolean | null
-          created_at: string
-          file_name: string
-          file_size: number
-          id: string
-          original_file_path: string | null
-          original_file_size: number | null
-          status: string
-          total_content: number | null
-          updated_at: string
-        }
-        Insert: {
-          autonomous_mode?: boolean | null
-          created_at?: string
-          file_name: string
-          file_size: number
-          id?: string
-          original_file_path?: string | null
-          original_file_size?: number | null
-          status?: string
-          total_content?: number | null
-          updated_at?: string
-        }
-        Update: {
-          autonomous_mode?: boolean | null
-          created_at?: string
-          file_name?: string
-          file_size?: number
-          id?: string
-          original_file_path?: string | null
-          original_file_size?: number | null
-          status?: string
-          total_content?: number | null
-          updated_at?: string
-        }
-        Relationships: []
       }
     }
     Views: {
