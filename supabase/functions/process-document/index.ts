@@ -2,6 +2,8 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.50.3';
+import JSZip from 'https://esm.sh/jszip@3.10.1';
+import { getDocument } from 'https://esm.sh/pdfjs-dist@4.0.379/legacy/build/pdf.mjs';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -12,6 +14,88 @@ const supabase = createClient(
   Deno.env.get('SUPABASE_URL') ?? '',
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 );
+
+// Real document extraction functions - NO FAKE DATA
+async function extractDocumentContent(file: File): Promise<Array<{name: string, content: string, pages: number[]}>> {
+  const results = [];
+  
+  if (file.name.toLowerCase().endsWith('.zip')) {
+    console.log('Processing ZIP file with real extraction');
+    const arrayBuffer = await file.arrayBuffer();
+    const zip = new JSZip();
+    const zipContents = await zip.loadAsync(arrayBuffer);
+    
+    for (const [fileName, zipEntry] of Object.entries(zipContents.files)) {
+      if (!zipEntry.dir) {
+        console.log(`Extracting file from ZIP: ${fileName}`);
+        try {
+          const fileData = await zipEntry.async('arraybuffer');
+          const extractedFile = new File([fileData], fileName);
+          const content = await extractSingleFileContent(extractedFile);
+          if (content.trim()) {
+            results.push({
+              name: fileName,
+              content: content,
+              pages: [1] // Real page extraction would require parsing the actual document structure
+            });
+          }
+        } catch (error) {
+          console.error(`Failed to extract ${fileName}:`, error);
+        }
+      }
+    }
+  } else {
+    console.log('Processing single file with real extraction');
+    const content = await extractSingleFileContent(file);
+    if (content.trim()) {
+      results.push({
+        name: file.name,
+        content: content,
+        pages: [1]
+      });
+    }
+  }
+  
+  return results;
+}
+
+async function extractSingleFileContent(file: File): Promise<string> {
+  const fileName = file.name.toLowerCase();
+  
+  if (file.type === 'text/plain' || fileName.endsWith('.txt')) {
+    return await file.text();
+  }
+  
+  if (fileName.endsWith('.md')) {
+    return await file.text();
+  }
+  
+  if (file.type === 'text/html' || fileName.endsWith('.html')) {
+    return await file.text();
+  }
+  
+  if (file.type === 'application/pdf' || fileName.endsWith('.pdf')) {
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await getDocument({data: arrayBuffer}).promise;
+      let text = '';
+      
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items.map((item: any) => item.str).join(' ');
+        text += pageText + '\n';
+      }
+      
+      return text;
+    } catch (error) {
+      console.error('PDF extraction failed:', error);
+      throw new Error(`Failed to extract text from PDF: ${file.name}`);
+    }
+  }
+  
+  throw new Error(`Unsupported file type: ${file.name}. Supported: PDF, TXT, MD, HTML, ZIP`);
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -43,27 +127,18 @@ serve(async (req) => {
       throw new Error(`Failed to create job: ${jobError.message}`);
     }
 
-    let textContent = '';
-    let fileCount = 1;
-
-    // Handle ZIP files
-    if (file.name.toLowerCase().endsWith('.zip')) {
-      // For now, we'll simulate ZIP processing - full ZIP extraction would require additional libraries
-      textContent = `ZIP file containing multiple documents: ${file.name}`;
-      fileCount = Math.floor(Math.random() * 10) + 5; // Simulate 5-15 files
-    } else {
-      // Handle individual files
-      if (file.type === 'text/plain' || file.name.toLowerCase().endsWith('.txt')) {
-        textContent = await file.text();
-      } else if (file.name.toLowerCase().endsWith('.md')) {
-        textContent = await file.text();
-      } else if (file.type === 'text/html' || file.name.toLowerCase().endsWith('.html')) {
-        textContent = await file.text();
-      } else {
-        // For PDF, DOC, etc., we'll simulate text extraction
-        textContent = `Content extracted from ${file.name}. This document contains various topics and information that needs to be analyzed.`;
-      }
+    // REAL document processing - NO FAKE DATA
+    const extractedFiles = await extractDocumentContent(file);
+    console.log(`Extracted ${extractedFiles.length} files with real content`);
+    
+    if (extractedFiles.length === 0) {
+      throw new Error(`Unable to extract content from ${file.name}. Supported formats: ZIP, PDF, TXT, MD, HTML, DOC, DOCX`);
     }
+    
+    let textContent = extractedFiles.map(f => f.content).join('\n\n--- FILE SEPARATOR ---\n\n');
+    const fileCount = extractedFiles.length;
+    
+    console.log(`Real content extracted: ${textContent.length} characters from ${fileCount} files`);
 
     // Analyze content with GPT-4.1
     const openAIResponse = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -120,39 +195,16 @@ serve(async (req) => {
 
     try {
       analysisResult = JSON.parse(aiResult.choices[0].message.content);
+      console.log('AI analysis successful - using REAL analysis results');
     } catch (parseError) {
-      console.error('Failed to parse AI response, using fallback');
-      // Fallback analysis if JSON parsing fails
-      analysisResult = {
-        topics: [
-          {
-            name: 'Document Analysis',
-            confidence: 75,
-            keywords: ['document', 'content', 'analysis'],
-            pages: [1],
-            contentType: 'other',
-            sentiment: 'neutral',
-            language: 'en'
-          }
-        ],
-        extractionPlan: [
-          'AI-ready text chunks',
-          'Topic-based summaries',
-          'Keyword extraction'
-        ],
-        totalContent: Math.floor(textContent.length / 10),
-        languages: ['English'],
-        documentStructure: 'Standard document format'
-      };
+      console.error('Failed to parse AI response - NO FALLBACK, throwing error');
+      throw new Error(`AI analysis failed to return valid JSON. Cannot proceed with fake data. Error: ${parseError.message}`);
     }
 
-    // Adjust for multiple files if ZIP
+    // Real content calculation based on actual extracted files
     if (fileCount > 1) {
-      analysisResult.totalContent *= fileCount;
-      analysisResult.topics = analysisResult.topics.map((topic: any, index: number) => ({
-        ...topic,
-        pages: Array.from({length: Math.floor(Math.random() * 5) + 1}, (_, i) => i + 1 + (index * 10))
-      }));
+      analysisResult.totalContent = extractedFiles.reduce((sum, file) => sum + file.content.length, 0);
+      console.log(`Real total content calculated: ${analysisResult.totalContent} characters from ${fileCount} files`);
     }
 
     // Store topics in database
