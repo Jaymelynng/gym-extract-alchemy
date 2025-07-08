@@ -49,6 +49,8 @@ const TopicDetectionResults: React.FC<TopicDetectionResultsProps> = ({
   const [autonomousMode, setAutonomousMode] = useState(true);
   const [selectedTopics, setSelectedTopics] = useState<string[]>(topics.map(t => t.name));
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [processingIntensity, setProcessingIntensity] = useState<'light' | 'detailed'>('detailed');
+  const [outputFormat, setOutputFormat] = useState<'comprehensive' | 'summary-only'>('comprehensive');
 
   const getTopicIcon = (contentType: string) => {
     switch (contentType) {
@@ -87,7 +89,10 @@ const TopicDetectionResults: React.FC<TopicDetectionResultsProps> = ({
     onStartExtraction({
       autonomous: autonomousMode,
       selectedTopics,
-      customRules: {} // Future enhancement
+      customRules: {
+        processingIntensity,
+        outputFormat
+      }
     });
   };
 
@@ -136,32 +141,99 @@ const TopicDetectionResults: React.FC<TopicDetectionResultsProps> = ({
             </div>
           </div>
 
-          {/* Autonomous Mode Toggle */}
-          <div className="flex items-center justify-between p-4 bg-background rounded-lg mb-4">
-            <div className="flex items-center gap-3">
-              <div className="flex items-center space-x-2">
-                <Switch
-                  id="autonomous-mode"
-                  checked={autonomousMode}
-                  onCheckedChange={setAutonomousMode}
-                />
-                <Label htmlFor="autonomous-mode" className="font-medium">
-                  Autonomous Mode
-                </Label>
+          {/* Processing Controls */}
+          <div className="space-y-4 p-4 bg-background rounded-lg mb-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="autonomous-mode"
+                    checked={autonomousMode}
+                    onCheckedChange={setAutonomousMode}
+                  />
+                  <Label htmlFor="autonomous-mode" className="font-medium">
+                    Autonomous Mode
+                  </Label>
+                </div>
+                <Badge variant={autonomousMode ? "default" : "secondary"}>
+                  {autonomousMode ? "Smart Processing" : "Manual Control"}
+                </Badge>
               </div>
-              <Badge variant={autonomousMode ? "default" : "secondary"}>
-                {autonomousMode ? "Fully Automatic" : "Manual Control"}
-              </Badge>
+              
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowAdvanced(!showAdvanced)}
+              >
+                <Settings className="h-4 w-4 mr-2" />
+                {showAdvanced ? "Hide" : "Show"} Options
+              </Button>
             </div>
-            
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowAdvanced(!showAdvanced)}
-            >
-              <Settings className="h-4 w-4 mr-2" />
-              {showAdvanced ? "Hide" : "Show"} Advanced
-            </Button>
+
+            {/* Processing Options */}
+            {showAdvanced && (
+              <div className="grid md:grid-cols-2 gap-4 pt-4 border-t">
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Processing Intensity</Label>
+                  <div className="flex gap-2">
+                    <Button
+                      variant={processingIntensity === 'light' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setProcessingIntensity('light')}
+                      className="flex-1"
+                    >
+                      <Zap className="h-4 w-4 mr-2" />
+                      Light
+                    </Button>
+                    <Button
+                      variant={processingIntensity === 'detailed' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setProcessingIntensity('detailed')}
+                      className="flex-1"
+                    >
+                      <Brain className="h-4 w-4 mr-2" />
+                      Detailed
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {processingIntensity === 'light' 
+                      ? 'Quick analysis with consolidated topics'
+                      : 'Comprehensive analysis with detailed insights'
+                    }
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Output Format</Label>
+                  <div className="flex gap-2">
+                    <Button
+                      variant={outputFormat === 'summary-only' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setOutputFormat('summary-only')}
+                      className="flex-1"
+                    >
+                      <TrendingUp className="h-4 w-4 mr-2" />
+                      Summary
+                    </Button>
+                    <Button
+                      variant={outputFormat === 'comprehensive' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setOutputFormat('comprehensive')}
+                      className="flex-1"
+                    >
+                      <Sparkles className="h-4 w-4 mr-2" />
+                      Full Report
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {outputFormat === 'summary-only' 
+                      ? 'Executive summary only'
+                      : 'Complete analysis + executive summary'
+                    }
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
 
           {!autonomousMode && (
@@ -281,17 +353,54 @@ const TopicDetectionResults: React.FC<TopicDetectionResultsProps> = ({
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {extractionPlan.map((item, index) => (
-                  <div key={index} className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg">
-                    <div className="w-6 h-6 rounded-full bg-primary text-primary-foreground text-sm flex items-center justify-center mt-0.5">
-                      {index + 1}
-                    </div>
-                    <div className="flex-1">
-                      <p className="font-medium">{item}</p>
-                    </div>
-                    <CheckCircle className="h-5 w-5 text-green-600" />
+                <div className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg">
+                  <div className="w-6 h-6 rounded-full bg-primary text-primary-foreground text-sm flex items-center justify-center mt-0.5">
+                    1
                   </div>
-                ))}
+                  <div className="flex-1">
+                    <p className="font-medium">Consolidate similar topics to reduce fragmentation</p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Smart grouping of related content areas for focused analysis
+                    </p>
+                  </div>
+                  <CheckCircle className="h-5 w-5 text-green-600" />
+                </div>
+                
+                <div className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg">
+                  <div className="w-6 h-6 rounded-full bg-primary text-primary-foreground text-sm flex items-center justify-center mt-0.5">
+                    2
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium">Generate comprehensive analysis reports</p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Detailed insights with strategic recommendations and actionable takeaways
+                    </p>
+                  </div>
+                  <CheckCircle className="h-5 w-5 text-green-600" />
+                </div>
+
+                <div className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg">
+                  <div className="w-6 h-6 rounded-full bg-primary text-primary-foreground text-sm flex items-center justify-center mt-0.5">
+                    3
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium">Create executive summaries</p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Concise overviews with key findings and decision-making support
+                    </p>
+                  </div>
+                  <CheckCircle className="h-5 w-5 text-green-600" />
+                </div>
+
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="flex items-center gap-2 text-blue-800">
+                    <Sparkles className="h-4 w-4" />
+                    <span className="text-sm font-medium">Smart Processing</span>
+                  </div>
+                  <p className="text-xs text-blue-700 mt-1">
+                    Now creates fewer, higher-quality files (5-20KB each) with substantial content instead of many small fragments.
+                  </p>
+                </div>
               </div>
             </CardContent>
           </Card>

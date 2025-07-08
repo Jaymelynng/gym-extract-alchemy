@@ -31,10 +31,14 @@ serve(async (req) => {
         .eq('id', jobId);
     }
 
-    // Generate outputs for each topic using GPT-4.1
+    // Consolidate similar topics to reduce fragmentation
+    const consolidatedTopics = consolidateTopics(topics);
+    console.log(`Consolidated ${topics.length} topics into ${consolidatedTopics.length} meaningful groups`);
+
+    // Generate comprehensive outputs for consolidated topics
     const results = [];
 
-    for (const topic of topics) {
+    for (const topicGroup of consolidatedTopics) {
       const openAIResponse = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -46,46 +50,104 @@ serve(async (req) => {
           messages: [
             {
               role: 'system',
-              content: `You are an expert content creator. Based on the topic analysis, create various output formats suitable for different uses. Generate content that would be useful for social media, AI training, documentation, etc.`
+              content: `You are an expert business analyst and content strategist. Create comprehensive, substantial content that provides real value. Focus on actionable insights and detailed analysis rather than superficial summaries.`
             },
             {
               role: 'user',
-              content: `Create content outputs for this topic:
-              Topic: ${topic.name}
-              Type: ${topic.contentType}
-              Keywords: ${topic.keywords.join(', ')}
-              Sentiment: ${topic.sentiment}
+              content: `Create a comprehensive analysis for this topic group:
               
-              Generate:
-              1. Social media content with relevant hashtags
-              2. AI-ready text chunks for training
-              3. Summary and key points
-              4. Actionable insights`
+              Main Topic: ${topicGroup.mainTopic}
+              Related Topics: ${topicGroup.subTopics.join(', ')}
+              Content Type: ${topicGroup.contentType}
+              Key Concepts: ${topicGroup.allKeywords.join(', ')}
+              Overall Sentiment: ${topicGroup.sentiment}
+              Page Coverage: ${topicGroup.totalPages} pages
+              
+              Generate a detailed analysis (minimum 1000 words) that includes:
+              1. Executive Summary (2-3 paragraphs)
+              2. Key Findings and Insights (detailed bullet points)
+              3. Actionable Recommendations 
+              4. Supporting Data and Context
+              5. Strategic Implications
+              
+              Make the content substantial, specific, and actionable. Avoid generic statements.`
             }
           ],
           temperature: 0.7,
-          max_tokens: 1500
+          max_tokens: 2000
         }),
       });
 
       if (openAIResponse.ok) {
         const aiResult = await openAIResponse.json();
         results.push({
-          topic: topic.name,
+          topic: topicGroup.mainTopic,
           content: aiResult.choices[0].message.content,
-          type: topic.contentType
+          type: topicGroup.contentType,
+          subTopics: topicGroup.subTopics,
+          pages: topicGroup.totalPages
         });
       }
 
       // Add small delay to avoid rate limiting
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 200));
     }
 
-    // Generate and store files for each content type
+// Helper function to consolidate similar topics
+function consolidateTopics(topics: any[]) {
+  const consolidated = [];
+  const used = new Set();
+  
+  for (let i = 0; i < topics.length; i++) {
+    if (used.has(i)) continue;
+    
+    const mainTopic = topics[i];
+    const group = {
+      mainTopic: mainTopic.name,
+      subTopics: [],
+      contentType: mainTopic.contentType,
+      sentiment: mainTopic.sentiment,
+      allKeywords: [...mainTopic.keywords],
+      totalPages: mainTopic.pages.length
+    };
+    
+    // Find similar topics to group together
+    for (let j = i + 1; j < topics.length; j++) {
+      if (used.has(j)) continue;
+      
+      const otherTopic = topics[j];
+      const similarity = calculateTopicSimilarity(mainTopic, otherTopic);
+      
+      // Group topics with >60% similarity or same content type
+      if (similarity > 0.6 || mainTopic.contentType === otherTopic.contentType) {
+        group.subTopics.push(otherTopic.name);
+        group.allKeywords.push(...otherTopic.keywords);
+        group.totalPages += otherTopic.pages.length;
+        used.add(j);
+      }
+    }
+    
+    used.add(i);
+    consolidated.push(group);
+  }
+  
+  return consolidated;
+}
+
+function calculateTopicSimilarity(topic1: any, topic2: any) {
+  const keywords1 = new Set(topic1.keywords.map((k: string) => k.toLowerCase()));
+  const keywords2 = new Set(topic2.keywords.map((k: string) => k.toLowerCase()));
+  
+  const intersection = new Set([...keywords1].filter(k => keywords2.has(k)));
+  const union = new Set([...keywords1, ...keywords2]);
+  
+  return intersection.size / union.size;
+}
+
+    // Generate simplified, high-value outputs
     const contentCategories = [
-      { id: 'social-media', title: 'Social Media Content', description: 'Ready-to-post content with hashtags', icon: 'Smartphone' },
-      { id: 'ai-chunks', title: 'AI-Ready Chunks', description: 'Perfect for ChatGPT and Claude', icon: 'Bot' },
-      { id: 'summaries', title: 'Topic Summaries', description: 'Concise overviews and key points', icon: 'FileText' }
+      { id: 'analysis', title: 'Comprehensive Analysis', description: 'Detailed insights and strategic recommendations', icon: 'FileText' },
+      { id: 'executive-summary', title: 'Executive Summary', description: 'Key findings and actionable takeaways', icon: 'TrendingUp' }
     ];
 
     const generatedResults = [];
@@ -95,38 +157,64 @@ serve(async (req) => {
       let totalSizeBytes = 0;
       
       for (const result of results) {
-        // Create file content based on category
+        // Create substantial file content based on category
         let fileContent = '';
-        let fileExtension = 'txt';
-        let contentType = 'text/plain';
+        let fileExtension = 'md';
+        let contentType = 'text/markdown';
         
-        if (category.id === 'social-media') {
-          // Extract social media ready content from AI response
-          const socialContent = result.content.split('\n').filter(line => 
-            line.includes('#') || line.includes('post') || line.includes('share')
-          ).join('\n') || result.content.substring(0, 200);
-          fileContent = `🎯 ${result.topic} - Social Media Content\n\n${socialContent}\n\n#${result.topic.toLowerCase().replace(/\s+/g, '')} #contentcreation #AI`;
-        } else if (category.id === 'ai-chunks') {
-          fileContent = JSON.stringify({
-            topic: result.topic,
-            content: result.content,
-            type: result.type,
-            keywords: [],
-            metadata: {
-              created_at: new Date().toISOString(),
-              source: 'autonomous_processing',
-              job_id: jobId
-            }
-          }, null, 2);
-          fileExtension = 'json';
-          contentType = 'application/json';
+        if (category.id === 'analysis') {
+          // Full comprehensive analysis
+          fileContent = `# Comprehensive Analysis: ${result.topic}
+
+## Overview
+${result.subTopics && result.subTopics.length > 0 ? 
+  `This analysis covers ${result.topic} and related areas: ${result.subTopics.join(', ')}.` : 
+  `This analysis focuses on ${result.topic}.`}
+
+**Content Type:** ${result.type}
+**Page Coverage:** ${result.pages || 'Multiple'} pages
+
+---
+
+${result.content}
+
+---
+
+## Document Context
+- **Analysis Date:** ${new Date().toLocaleDateString()}
+- **Processing Method:** Autonomous AI Analysis
+- **Content Quality:** Comprehensive Review
+
+*This analysis was generated using advanced AI to extract maximum value from your document content.*`;
+
         } else {
-          // Extract key points and summary
-          const lines = result.content.split('\n');
-          const keyPoints = lines.filter(line => 
-            line.includes('•') || line.includes('-') || line.includes('*')
-          ).slice(0, 5);
-          fileContent = `📊 ${result.topic} - Summary\n\nKey Points:\n${keyPoints.join('\n')}\n\nFull Content:\n${result.content.substring(0, 800)}${result.content.length > 800 ? '...' : ''}`;
+          // Executive summary - extract key sections
+          const sections = result.content.split('\n\n');
+          const summary = sections.slice(0, 3).join('\n\n'); // First 3 paragraphs
+          const keyPoints = result.content.match(/(?:^|\n)[\d•\-*]\s*.+/gm)?.slice(0, 8) || [];
+          
+          fileContent = `# Executive Summary: ${result.topic}
+
+## Quick Overview
+${summary}
+
+## Key Takeaways
+${keyPoints.map(point => point.trim()).join('\n')}
+
+## Strategic Recommendations
+Based on the analysis of ${result.topic}, the following actions are recommended:
+
+${result.content.includes('recommend') || result.content.includes('suggest') ? 
+  result.content.split('\n').filter(line => 
+    line.toLowerCase().includes('recommend') || 
+    line.toLowerCase().includes('suggest') ||
+    line.toLowerCase().includes('should')
+  ).slice(0, 5).join('\n') : 
+  '• Review the detailed analysis for specific action items\n• Consider the strategic implications outlined in the comprehensive report\n• Evaluate implementation priorities based on organizational goals'}
+
+---
+**Summary Generated:** ${new Date().toLocaleDateString()}
+**Source Document Analysis:** ${result.topic}`;
         }
 
         const fileName = `${result.topic.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${category.id}.${fileExtension}`;
