@@ -31,6 +31,16 @@ export const useGeneratedContent = (jobId: string | null) => {
         setLoading(true);
         setError(null);
 
+        // First, get the job details to check for original file
+        const { data: jobData, error: jobError } = await supabase
+          .from('processing_jobs')
+          .select('*')
+          .eq('id', jobId)
+          .single();
+
+        if (jobError) throw jobError;
+
+        // Get generated content
         const { data, error } = await supabase
           .from('generated_content')
           .select('*')
@@ -41,6 +51,26 @@ export const useGeneratedContent = (jobId: string | null) => {
 
         // Group files by category
         const categorizedResults: { [key: string]: any } = {};
+        
+        // Add original document category if it exists
+        if (jobData.original_file_path) {
+          const { data: { publicUrl } } = supabase.storage
+            .from('document-processing')
+            .getPublicUrl(jobData.original_file_path);
+
+          categorizedResults['original'] = {
+            id: 'original',
+            title: 'Original Document',
+            description: 'Your uploaded document, preserved exactly as uploaded',
+            files: [{
+              name: jobData.file_name,
+              type: jobData.file_name.split('.').pop()?.toLowerCase() || 'file',
+              size: `${Math.round((jobData.original_file_size || 0) / 1024)} KB`,
+              downloadUrl: publicUrl
+            }],
+            totalSizeBytes: jobData.original_file_size || 0
+          };
+        }
         
         data?.forEach((file) => {
           if (!categorizedResults[file.category]) {
@@ -70,13 +100,19 @@ export const useGeneratedContent = (jobId: string | null) => {
           categorizedResults[file.category].totalSizeBytes += sizeInBytes;
         });
 
-        // Convert to array format
-        const formattedResults = Object.values(categorizedResults).map((category: any) => ({
-          ...category,
-          fileCount: category.files.length,
-          totalSize: `${Math.round(category.totalSizeBytes / 1024)} KB`,
-          icon: getCategoryIcon(category.id)
-        }));
+        // Convert to array format, prioritizing original document first
+        const formattedResults = Object.values(categorizedResults)
+          .map((category: any) => ({
+            ...category,
+            fileCount: category.files.length,
+            totalSize: `${Math.round(category.totalSizeBytes / 1024)} KB`,
+            icon: getCategoryIcon(category.id)
+          }))
+          .sort((a, b) => {
+            if (a.id === 'original') return -1;
+            if (b.id === 'original') return 1;
+            return 0;
+          });
 
         setResults(formattedResults);
       } catch (err) {
@@ -96,6 +132,8 @@ export const useGeneratedContent = (jobId: string | null) => {
 const getCategoryIcon = (categoryId: string) => {
   // Return icon names as strings since we can't import React components in hooks
   switch (categoryId) {
+    case 'original':
+      return 'FileText';
     case 'social-media':
       return 'Smartphone';
     case 'ai-chunks':

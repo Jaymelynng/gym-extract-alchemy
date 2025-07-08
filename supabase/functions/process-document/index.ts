@@ -112,12 +112,35 @@ serve(async (req) => {
 
     console.log(`Processing file: ${file.name}, type: ${file.type}, size: ${file.size}`);
 
-    // Create processing job record
+    // First, store the original file in Supabase Storage
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const originalFileName = `original-${timestamp}-${file.name}`;
+    const originalFilePath = `originals/${originalFileName}`;
+    
+    console.log(`Storing original file at: ${originalFilePath}`);
+    
+    const { error: uploadError } = await supabase.storage
+      .from('document-processing')
+      .upload(originalFilePath, file, {
+        cacheControl: '3600',
+        upsert: false
+      });
+
+    if (uploadError) {
+      console.error('Failed to store original file:', uploadError);
+      throw new Error(`Failed to store original file: ${uploadError.message}`);
+    }
+
+    console.log('Original file stored successfully');
+
+    // Create processing job record with original file reference
     const { data: job, error: jobError } = await supabase
       .from('processing_jobs')
       .insert({
         file_name: file.name,
         file_size: file.size,
+        original_file_path: originalFilePath,
+        original_file_size: file.size,
         status: 'processing'
       })
       .select()

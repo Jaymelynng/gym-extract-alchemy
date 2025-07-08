@@ -10,6 +10,8 @@ interface ProcessingJob {
   created_at: string;
   updated_at: string;
   autonomous_mode: boolean;
+  original_file_path?: string;
+  original_file_size?: number;
 }
 
 interface GeneratedContent {
