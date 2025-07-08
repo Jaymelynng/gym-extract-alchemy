@@ -21,6 +21,11 @@ serve(async (req) => {
     const { files } = await req.json();
     console.log('Processing files for organization:', files.length);
 
+    const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
+    if (!openAIApiKey) {
+      throw new Error('OpenAI API key not configured');
+    }
+
     const results = [];
 
     for (const file of files) {
@@ -34,17 +39,15 @@ serve(async (req) => {
         .eq('file_hash', hash)
         .single();
 
-      // AI categorization based on file name and type
-      const category = categorizeFile(file.name, file.type);
-      const tags = generateTags(file.name, file.type);
-      const folderPath = generateFolderPath(category, file.name);
-
+      // Use OpenAI for smart categorization
+      const aiAnalysis = await analyzeFileWithAI(file, openAIApiKey);
+      
       const result = {
         originalName: file.name,
         hash,
-        category,
-        tags,
-        folderPath,
+        category: aiAnalysis.category,
+        tags: aiAnalysis.tags,
+        folderPath: aiAnalysis.folderPath,
         isDuplicate: !!existingFile,
         duplicateInfo: existingFile ? {
           id: existingFile.id,
@@ -83,77 +86,72 @@ async function generateFileHash(input: string): Promise<string> {
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-function categorizeFile(fileName: string, fileType: string): string {
-  const name = fileName.toLowerCase();
-  const type = fileType.toLowerCase();
+async function analyzeFileWithAI(file: any, apiKey: string) {
+  try {
+    const prompt = `Analyze this file and provide smart categorization:
 
-  // Document types
-  if (type.includes('pdf') || name.includes('report') || name.includes('document')) {
-    return 'Documents';
-  }
-  
-  // Images
-  if (type.includes('image') || type.includes('png') || type.includes('jpg') || type.includes('jpeg')) {
-    return 'Images';
-  }
-  
-  // Spreadsheets
-  if (type.includes('sheet') || type.includes('excel') || name.includes('data') || name.includes('spreadsheet')) {
-    return 'Spreadsheets';
-  }
-  
-  // Presentations
-  if (type.includes('presentation') || type.includes('powerpoint') || name.includes('presentation')) {
-    return 'Presentations';
-  }
-  
-  // Archives
-  if (type.includes('zip') || type.includes('rar') || type.includes('archive')) {
-    return 'Archives';
-  }
-  
-  // Audio/Video
-  if (type.includes('audio') || type.includes('video') || type.includes('mp3') || type.includes('mp4')) {
-    return 'Media';
-  }
-  
-  // Code files
-  if (name.includes('.js') || name.includes('.py') || name.includes('.html') || name.includes('code')) {
-    return 'Code';
-  }
-  
-  return 'Other';
-}
+File: ${file.name}
+Type: ${file.type || 'unknown'}
+Size: ${file.size} bytes
 
-function generateTags(fileName: string, fileType: string): string[] {
-  const tags = [];
-  const name = fileName.toLowerCase();
-  
-  // File type tag
-  if (fileType.includes('pdf')) tags.push('pdf');
-  if (fileType.includes('image')) tags.push('image');
-  if (fileType.includes('document')) tags.push('document');
-  
-  // Content-based tags
-  if (name.includes('invoice')) tags.push('invoice', 'financial');
-  if (name.includes('contract')) tags.push('contract', 'legal');
-  if (name.includes('report')) tags.push('report', 'analysis');
-  if (name.includes('presentation')) tags.push('presentation');
-  if (name.includes('data')) tags.push('data', 'analytics');
-  if (name.includes('photo')) tags.push('photo', 'personal');
-  
-  // Date-based tags
-  const currentYear = new Date().getFullYear();
-  if (name.includes(currentYear.toString())) tags.push(currentYear.toString());
-  if (name.includes((currentYear - 1).toString())) tags.push((currentYear - 1).toString());
-  
-  return tags.slice(0, 5); // Limit to 5 tags
-}
+Based on the filename and type, determine:
+1. Best category (choose from: Documents, Images, Spreadsheets, Presentations, Archives, Media, Code, Legal, Financial, Personal, Work, Educational, or suggest a better one)
+2. 3-5 relevant tags
+3. Suggested folder structure
 
-function generateFolderPath(category: string, fileName: string): string {
-  const date = new Date();
-  const year = date.getFullYear();
-  const month = (date.getMonth() + 1).toString().padStart(2, '0');
-  
-  return `${category}/${year}/${month}`;
+Respond in JSON format:
+{
+  "category": "category_name",
+  "tags": ["tag1", "tag2", "tag3"],
+  "folderPath": "Category/Year/Month",
+  "reasoning": "brief explanation"
+}`;
+
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'You are a smart document organizer. Analyze files and suggest optimal categorization and folder structures.' },
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.3,
+        max_tokens: 500
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`OpenAI API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const aiResponse = data.choices[0].message.content;
+    
+    // Parse JSON response
+    const analysis = JSON.parse(aiResponse);
+    
+    // Generate folder path with current date
+    const date = new Date();
+    const year = date.getFullYear();
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    
+    return {
+      category: analysis.category || 'Documents',
+      tags: analysis.tags || [],
+      folderPath: `${analysis.category}/${year}/${month}`
+    };
+    
+  } catch (error) {
+    console.error('AI analysis failed, falling back to basic categorization:', error);
+    // Fallback to basic categorization
+    return {
+      category: 'Documents',
+      tags: ['unanalyzed'],
+      folderPath: `Documents/${new Date().getFullYear()}/${(new Date().getMonth() + 1).toString().padStart(2, '0')}`
+    };
+  }
 }

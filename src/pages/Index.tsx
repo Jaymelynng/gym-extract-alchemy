@@ -1,15 +1,35 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import UltraSimpleUpload from '@/components/UltraSimpleUpload';
 import DocumentBrowser from '@/components/DocumentBrowser';
 import { Upload, Search } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState('upload');
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [documentCount, setDocumentCount] = useState(0);
+
+  const fetchDocumentCount = async () => {
+    try {
+      const { count } = await supabase
+        .from('documents')
+        .select('*', { count: 'exact', head: true });
+      setDocumentCount(count || 0);
+    } catch (error) {
+      console.error('Error fetching document count:', error);
+    }
+  };
+
+  useEffect(() => {
+    fetchDocumentCount();
+  }, [refreshKey]);
 
   const handleUploadComplete = (results: any[]) => {
     console.log('Upload completed:', results);
+    // Refresh the document browser and count
+    setRefreshKey(prev => prev + 1);
     // Switch to browser tab to show results
     setActiveTab('browse');
   };
@@ -35,7 +55,7 @@ const Index = () => {
             </TabsTrigger>
             <TabsTrigger value="browse" className="flex items-center gap-2">
               <Search className="h-4 w-4" />
-              Browse Documents
+              Browse Documents ({documentCount})
             </TabsTrigger>
           </TabsList>
 
@@ -44,7 +64,7 @@ const Index = () => {
           </TabsContent>
 
           <TabsContent value="browse">
-            <DocumentBrowser />
+            <DocumentBrowser key={refreshKey} />
           </TabsContent>
         </Tabs>
       </div>
