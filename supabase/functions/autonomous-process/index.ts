@@ -101,24 +101,38 @@ serve(async (req) => {
         let contentType = 'text/plain';
         
         if (category.id === 'social-media') {
-          fileContent = `Social Media Content for: ${result.topic}\n\n${result.content}\n\n#contentcreation #AI #topics #${result.type}`;
+          // Extract social media ready content from AI response
+          const socialContent = result.content.split('\n').filter(line => 
+            line.includes('#') || line.includes('post') || line.includes('share')
+          ).join('\n') || result.content.substring(0, 200);
+          fileContent = `🎯 ${result.topic} - Social Media Content\n\n${socialContent}\n\n#${result.topic.toLowerCase().replace(/\s+/g, '')} #contentcreation #AI`;
         } else if (category.id === 'ai-chunks') {
           fileContent = JSON.stringify({
             topic: result.topic,
             content: result.content,
             type: result.type,
             keywords: [],
-            created_at: new Date().toISOString()
+            metadata: {
+              created_at: new Date().toISOString(),
+              source: 'autonomous_processing',
+              job_id: jobId
+            }
           }, null, 2);
           fileExtension = 'json';
           contentType = 'application/json';
         } else {
-          const summary = result.content.substring(0, 500);
-          fileContent = `Topic Summary: ${result.topic}\n\nContent Type: ${result.type}\n\nSummary:\n${summary}${result.content.length > 500 ? '...' : ''}`;
+          // Extract key points and summary
+          const lines = result.content.split('\n');
+          const keyPoints = lines.filter(line => 
+            line.includes('•') || line.includes('-') || line.includes('*')
+          ).slice(0, 5);
+          fileContent = `📊 ${result.topic} - Summary\n\nKey Points:\n${keyPoints.join('\n')}\n\nFull Content:\n${result.content.substring(0, 800)}${result.content.length > 800 ? '...' : ''}`;
         }
 
         const fileName = `${result.topic.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${category.id}.${fileExtension}`;
         const filePath = `${jobId}/${category.id}/${fileName}`;
+        
+        console.log(`Uploading file: ${fileName} to path: ${filePath}`);
         
         // Upload to Supabase Storage
         const { data: uploadData, error: uploadError } = await supabase.storage
@@ -129,16 +143,14 @@ serve(async (req) => {
           });
 
         if (!uploadError && uploadData) {
-          // Get public URL
-          const { data: { publicUrl } } = supabase.storage
-            .from('document-processing')
-            .getPublicUrl(filePath);
-
-          const fileSizeKB = Math.round(fileContent.length / 1024);
-          totalSizeBytes += fileContent.length;
+          console.log(`Successfully uploaded: ${fileName}`);
+          
+          const fileSizeBytes = new Blob([fileContent]).size;
+          const fileSizeKB = Math.max(1, Math.round(fileSizeBytes / 1024));
+          totalSizeBytes += fileSizeBytes;
 
           // Store metadata in database
-          await supabase
+          const { error: dbError } = await supabase
             .from('generated_content')
             .insert({
               job_id: jobId,
@@ -151,12 +163,21 @@ serve(async (req) => {
               file_size: `${fileSizeKB} KB`
             });
 
-          categoryFiles.push({
-            name: fileName,
-            type: fileExtension,
-            size: `${fileSizeKB} KB`,
-            downloadUrl: publicUrl
-          });
+          if (dbError) {
+            console.error(`Failed to store metadata for ${fileName}:`, dbError);
+          } else {
+            // Get public URL
+            const { data: { publicUrl } } = supabase.storage
+              .from('document-processing')
+              .getPublicUrl(filePath);
+
+            categoryFiles.push({
+              name: fileName,
+              type: fileExtension,
+              size: `${fileSizeKB} KB`,
+              downloadUrl: publicUrl
+            });
+          }
         } else {
           console.error(`Failed to upload ${fileName}:`, uploadError);
         }
@@ -169,11 +190,21 @@ serve(async (req) => {
           description: category.description,
           icon: category.icon,
           fileCount: categoryFiles.length,
-          totalSize: `${Math.round(totalSizeBytes / 1024)} KB`,
+          totalSize: `${Math.max(1, Math.round(totalSizeBytes / 1024))} KB`,
           files: categoryFiles
         });
       }
     }
+
+    // Update job status to completed
+    await supabase
+      .from('processing_jobs')
+      .update({ 
+        status: 'completed',
+        total_content: generatedResults.reduce((sum, cat) => sum + cat.fileCount, 0),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', jobId);
 
     console.log('Autonomous processing completed successfully');
 
