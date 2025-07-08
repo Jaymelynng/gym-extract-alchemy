@@ -13,96 +13,38 @@ const supabase = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 );
 
-serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
+// ============================================================================
+// TOPIC CONSOLIDATION UTILITIES
+// ============================================================================
 
-  try {
-    const { topics, fileName, jobId } = await req.json();
-    
-    console.log(`Starting autonomous processing for ${topics.length} topics from ${fileName}`);
-    
-    // Update job to autonomous mode
-    if (jobId) {
-      await supabase
-        .from('processing_jobs')
-        .update({ autonomous_mode: true })
-        .eq('id', jobId);
-    }
+interface TopicGroup {
+  mainTopic: string;
+  subTopics: string[];
+  contentType: string;
+  sentiment: string;
+  allKeywords: string[];
+  totalPages: number;
+}
 
-    // Consolidate similar topics to reduce fragmentation
-    const consolidatedTopics = consolidateTopics(topics);
-    console.log(`Consolidated ${topics.length} topics into ${consolidatedTopics.length} meaningful groups`);
+function calculateTopicSimilarity(topic1: any, topic2: any): number {
+  const keywords1 = new Set(topic1.keywords.map((k: string) => k.toLowerCase()));
+  const keywords2 = new Set(topic2.keywords.map((k: string) => k.toLowerCase()));
+  
+  const intersection = new Set([...keywords1].filter(k => keywords2.has(k)));
+  const union = new Set([...keywords1, ...keywords2]);
+  
+  return intersection.size / union.size;
+}
 
-    // Generate comprehensive outputs for consolidated topics
-    const results = [];
-
-    for (const topicGroup of consolidatedTopics) {
-      const openAIResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${Deno.env.get('OPENAI_API_KEY')}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'gpt-4.1-2025-04-14',
-          messages: [
-            {
-              role: 'system',
-              content: `You are an expert business analyst and content strategist. Create comprehensive, substantial content that provides real value. Focus on actionable insights and detailed analysis rather than superficial summaries.`
-            },
-            {
-              role: 'user',
-              content: `Create a comprehensive analysis for this topic group:
-              
-              Main Topic: ${topicGroup.mainTopic}
-              Related Topics: ${topicGroup.subTopics.join(', ')}
-              Content Type: ${topicGroup.contentType}
-              Key Concepts: ${topicGroup.allKeywords.join(', ')}
-              Overall Sentiment: ${topicGroup.sentiment}
-              Page Coverage: ${topicGroup.totalPages} pages
-              
-              Generate a detailed analysis (minimum 1000 words) that includes:
-              1. Executive Summary (2-3 paragraphs)
-              2. Key Findings and Insights (detailed bullet points)
-              3. Actionable Recommendations 
-              4. Supporting Data and Context
-              5. Strategic Implications
-              
-              Make the content substantial, specific, and actionable. Avoid generic statements.`
-            }
-          ],
-          temperature: 0.7,
-          max_tokens: 2000
-        }),
-      });
-
-      if (openAIResponse.ok) {
-        const aiResult = await openAIResponse.json();
-        results.push({
-          topic: topicGroup.mainTopic,
-          content: aiResult.choices[0].message.content,
-          type: topicGroup.contentType,
-          subTopics: topicGroup.subTopics,
-          pages: topicGroup.totalPages
-        });
-      }
-
-      // Add small delay to avoid rate limiting
-      await new Promise(resolve => setTimeout(resolve, 200));
-    }
-
-// Helper function to consolidate similar topics
-function consolidateTopics(topics: any[]) {
-  const consolidated = [];
-  const used = new Set();
+function consolidateTopics(topics: any[]): TopicGroup[] {
+  const consolidated: TopicGroup[] = [];
+  const used = new Set<number>();
   
   for (let i = 0; i < topics.length; i++) {
     if (used.has(i)) continue;
     
     const mainTopic = topics[i];
-    const group = {
+    const group: TopicGroup = {
       mainTopic: mainTopic.name,
       subTopics: [],
       contentType: mainTopic.contentType,
@@ -134,37 +76,125 @@ function consolidateTopics(topics: any[]) {
   return consolidated;
 }
 
-function calculateTopicSimilarity(topic1: any, topic2: any) {
-  const keywords1 = new Set(topic1.keywords.map((k: string) => k.toLowerCase()));
-  const keywords2 = new Set(topic2.keywords.map((k: string) => k.toLowerCase()));
-  
-  const intersection = new Set([...keywords1].filter(k => keywords2.has(k)));
-  const union = new Set([...keywords1, ...keywords2]);
-  
-  return intersection.size / union.size;
+// ============================================================================
+// CONTENT GENERATION UTILITIES
+// ============================================================================
+
+interface ProcessingResult {
+  topic: string;
+  content: string;
+  type: string;
+  subTopics: string[];
+  pages: number;
 }
 
-    // Generate simplified, high-value outputs
-    const contentCategories = [
-      { id: 'analysis', title: 'Comprehensive Analysis', description: 'Detailed insights and strategic recommendations', icon: 'FileText' },
-      { id: 'executive-summary', title: 'Executive Summary', description: 'Key findings and actionable takeaways', icon: 'TrendingUp' }
-    ];
+async function generateContentForTopicGroup(topicGroup: TopicGroup, jobId: string): Promise<ProcessingResult | null> {
+  try {
+    const openAIResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${Deno.env.get('OPENAI_API_KEY')}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4.1-2025-04-14',
+        messages: [
+          {
+            role: 'system',
+            content: `You are an expert business analyst and content strategist. Create comprehensive, substantial content that provides real value. Focus on actionable insights and detailed analysis rather than superficial summaries.`
+          },
+          {
+            role: 'user',
+            content: `Create a comprehensive analysis for this topic group:
+            
+            Main Topic: ${topicGroup.mainTopic}
+            Related Topics: ${topicGroup.subTopics.join(', ')}
+            Content Type: ${topicGroup.contentType}
+            Key Concepts: ${topicGroup.allKeywords.join(', ')}
+            Overall Sentiment: ${topicGroup.sentiment}
+            Page Coverage: ${topicGroup.totalPages} pages
+            
+            Generate a detailed analysis (minimum 1000 words) that includes:
+            1. Executive Summary (2-3 paragraphs)
+            2. Key Findings and Insights (detailed bullet points)
+            3. Actionable Recommendations 
+            4. Supporting Data and Context
+            5. Strategic Implications
+            
+            Make the content substantial, specific, and actionable. Avoid generic statements.`
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 2000
+      }),
+    });
 
-    const generatedResults = [];
+    if (openAIResponse.ok) {
+      const aiResult = await openAIResponse.json();
+      return {
+        topic: topicGroup.mainTopic,
+        content: aiResult.choices[0].message.content,
+        type: topicGroup.contentType,
+        subTopics: topicGroup.subTopics,
+        pages: topicGroup.totalPages
+      };
+    }
+    
+    console.error('OpenAI API error:', await openAIResponse.text());
+    return null;
+  } catch (error) {
+    console.error('Error generating content for topic group:', error);
+    return null;
+  }
+}
 
-    for (const category of contentCategories) {
-      const categoryFiles = [];
-      let totalSizeBytes = 0;
-      
-      for (const result of results) {
-        // Create substantial file content based on category
-        let fileContent = '';
-        let fileExtension = 'md';
-        let contentType = 'text/markdown';
-        
-        if (category.id === 'analysis') {
-          // Full comprehensive analysis
-          fileContent = `# Comprehensive Analysis: ${result.topic}
+async function processAllTopicGroups(consolidatedTopics: TopicGroup[], jobId: string): Promise<ProcessingResult[]> {
+  const results: ProcessingResult[] = [];
+  
+  for (const topicGroup of consolidatedTopics) {
+    const result = await generateContentForTopicGroup(topicGroup, jobId);
+    if (result) {
+      results.push(result);
+    }
+    
+    // Add delay to avoid rate limiting
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  
+  return results;
+}
+
+// ============================================================================
+// FILE PROCESSING UTILITIES
+// ============================================================================
+
+interface ContentCategory {
+  id: string;
+  title: string;
+  description: string;
+  icon: string;
+}
+
+interface FileData {
+  name: string;
+  type: string;
+  size: string;
+  downloadUrl: string;
+}
+
+interface CategoryResult {
+  id: string;
+  title: string;
+  description: string;
+  icon: string;
+  fileCount: number;
+  totalSize: string;
+  files: FileData[];
+}
+
+function createFileContent(result: ProcessingResult, category: ContentCategory): string {
+  if (category.id === 'analysis') {
+    return `# Comprehensive Analysis: ${result.topic}
 
 ## Overview
 ${result.subTopics && result.subTopics.length > 0 ? 
@@ -186,14 +216,13 @@ ${result.content}
 - **Content Quality:** Comprehensive Review
 
 *This analysis was generated using advanced AI to extract maximum value from your document content.*`;
-
-        } else {
-          // Executive summary - extract key sections
-          const sections = result.content.split('\n\n');
-          const summary = sections.slice(0, 3).join('\n\n'); // First 3 paragraphs
-          const keyPoints = result.content.match(/(?:^|\n)[\d•\-*]\s*.+/gm)?.slice(0, 8) || [];
-          
-          fileContent = `# Executive Summary: ${result.topic}
+  } else {
+    // Executive summary
+    const sections = result.content.split('\n\n');
+    const summary = sections.slice(0, 3).join('\n\n');
+    const keyPoints = result.content.match(/(?:^|\n)[\d•\-*]\s*.+/gm)?.slice(0, 8) || [];
+    
+    return `# Executive Summary: ${result.topic}
 
 ## Quick Overview
 ${summary}
@@ -215,84 +244,189 @@ ${result.content.includes('recommend') || result.content.includes('suggest') ?
 ---
 **Summary Generated:** ${new Date().toLocaleDateString()}
 **Source Document Analysis:** ${result.topic}`;
-        }
+  }
+}
 
-        const fileName = `${result.topic.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${category.id}.${fileExtension}`;
-        const filePath = `${jobId}/${category.id}/${fileName}`;
-        
-        console.log(`Uploading file: ${fileName} to path: ${filePath}`);
-        
-        // Upload to Supabase Storage
-        const { data: uploadData, error: uploadError } = await supabase.storage
+async function uploadFileToStorage(filePath: string, fileContent: string, contentType: string): Promise<boolean> {
+  try {
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from('document-processing')
+      .upload(filePath, new Blob([fileContent], { type: contentType }), {
+        cacheControl: '3600',
+        upsert: true
+      });
+
+    if (uploadError) {
+      console.error(`Failed to upload ${filePath}:`, uploadError);
+      return false;
+    }
+
+    console.log(`Successfully uploaded: ${filePath}`);
+    return true;
+  } catch (error) {
+    console.error(`Error uploading ${filePath}:`, error);
+    return false;
+  }
+}
+
+async function storeFileMetadata(jobId: string, category: ContentCategory, fileName: string, filePath: string, fileSize: string, result: ProcessingResult): Promise<boolean> {
+  try {
+    const { error: dbError } = await supabase
+      .from('generated_content')
+      .insert({
+        job_id: jobId,
+        category: category.id,
+        title: result.topic,
+        description: category.description,
+        file_name: fileName,
+        file_path: filePath,
+        file_type: 'md',
+        file_size: fileSize
+      });
+
+    if (dbError) {
+      console.error(`Failed to store metadata for ${fileName}:`, dbError);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error(`Error storing metadata for ${fileName}:`, error);
+    return false;
+  }
+}
+
+async function processFilesForCategory(category: ContentCategory, results: ProcessingResult[], jobId: string): Promise<CategoryResult> {
+  const categoryFiles: FileData[] = [];
+  let totalSizeBytes = 0;
+  
+  for (const result of results) {
+    const fileContent = createFileContent(result, category);
+    const fileName = `${result.topic.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${category.id}.md`;
+    const filePath = `${jobId}/${category.id}/${fileName}`;
+    
+    console.log(`Processing file: ${fileName}`);
+    
+    // Upload file to storage
+    const uploadSuccess = await uploadFileToStorage(filePath, fileContent, 'text/markdown');
+    
+    if (uploadSuccess) {
+      const fileSizeBytes = new Blob([fileContent]).size;
+      const fileSizeKB = Math.max(1, Math.round(fileSizeBytes / 1024));
+      totalSizeBytes += fileSizeBytes;
+
+      // Store metadata in database
+      const metadataSuccess = await storeFileMetadata(jobId, category, fileName, filePath, `${fileSizeKB} KB`, result);
+      
+      if (metadataSuccess) {
+        // Get public URL
+        const { data: { publicUrl } } = supabase.storage
           .from('document-processing')
-          .upload(filePath, new Blob([fileContent], { type: contentType }), {
-            cacheControl: '3600',
-            upsert: true
-          });
+          .getPublicUrl(filePath);
 
-        if (!uploadError && uploadData) {
-          console.log(`Successfully uploaded: ${fileName}`);
-          
-          const fileSizeBytes = new Blob([fileContent]).size;
-          const fileSizeKB = Math.max(1, Math.round(fileSizeBytes / 1024));
-          totalSizeBytes += fileSizeBytes;
-
-          // Store metadata in database
-          const { error: dbError } = await supabase
-            .from('generated_content')
-            .insert({
-              job_id: jobId,
-              category: category.id,
-              title: result.topic,
-              description: category.description,
-              file_name: fileName,
-              file_path: filePath,
-              file_type: fileExtension,
-              file_size: `${fileSizeKB} KB`
-            });
-
-          if (dbError) {
-            console.error(`Failed to store metadata for ${fileName}:`, dbError);
-          } else {
-            // Get public URL
-            const { data: { publicUrl } } = supabase.storage
-              .from('document-processing')
-              .getPublicUrl(filePath);
-
-            categoryFiles.push({
-              name: fileName,
-              type: fileExtension,
-              size: `${fileSizeKB} KB`,
-              downloadUrl: publicUrl
-            });
-          }
-        } else {
-          console.error(`Failed to upload ${fileName}:`, uploadError);
-        }
-      }
-
-      if (categoryFiles.length > 0) {
-        generatedResults.push({
-          id: category.id,
-          title: category.title,
-          description: category.description,
-          icon: category.icon,
-          fileCount: categoryFiles.length,
-          totalSize: `${Math.max(1, Math.round(totalSizeBytes / 1024))} KB`,
-          files: categoryFiles
+        categoryFiles.push({
+          name: fileName,
+          type: 'md',
+          size: `${fileSizeKB} KB`,
+          downloadUrl: publicUrl
         });
       }
     }
+  }
 
-    // Update job status to completed
+  return {
+    id: category.id,
+    title: category.title,
+    description: category.description,
+    icon: category.icon,
+    fileCount: categoryFiles.length,
+    totalSize: `${Math.max(1, Math.round(totalSizeBytes / 1024))} KB`,
+    files: categoryFiles
+  };
+}
+
+async function generateAllFiles(results: ProcessingResult[], jobId: string): Promise<CategoryResult[]> {
+  const contentCategories: ContentCategory[] = [
+    { id: 'analysis', title: 'Comprehensive Analysis', description: 'Detailed insights and strategic recommendations', icon: 'FileText' },
+    { id: 'executive-summary', title: 'Executive Summary', description: 'Key findings and actionable takeaways', icon: 'TrendingUp' }
+  ];
+
+  const generatedResults: CategoryResult[] = [];
+
+  for (const category of contentCategories) {
+    const categoryResult = await processFilesForCategory(category, results, jobId);
+    if (categoryResult.fileCount > 0) {
+      generatedResults.push(categoryResult);
+    }
+  }
+
+  return generatedResults;
+}
+
+// ============================================================================
+// JOB MANAGEMENT UTILITIES
+// ============================================================================
+
+async function updateJobToAutonomousMode(jobId: string): Promise<void> {
+  try {
+    await supabase
+      .from('processing_jobs')
+      .update({ autonomous_mode: true })
+      .eq('id', jobId);
+  } catch (error) {
+    console.error('Failed to update job to autonomous mode:', error);
+  }
+}
+
+async function completeJob(jobId: string, totalFiles: number): Promise<void> {
+  try {
     await supabase
       .from('processing_jobs')
       .update({ 
         status: 'completed',
-        total_content: generatedResults.reduce((sum, cat) => sum + cat.fileCount, 0),
+        total_content: totalFiles,
         updated_at: new Date().toISOString()
       })
       .eq('id', jobId);
+  } catch (error) {
+    console.error('Failed to complete job:', error);
+  }
+}
+
+// ============================================================================
+// MAIN HANDLER
+// ============================================================================
+
+serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const { topics, fileName, jobId } = await req.json();
+    
+    console.log(`Starting autonomous processing for ${topics.length} topics from ${fileName}`);
+    
+    // Update job to autonomous mode
+    if (jobId) {
+      await updateJobToAutonomousMode(jobId);
+    }
+
+    // Step 1: Consolidate similar topics to reduce fragmentation
+    const consolidatedTopics = consolidateTopics(topics);
+    console.log(`Consolidated ${topics.length} topics into ${consolidatedTopics.length} meaningful groups`);
+
+    // Step 2: Generate comprehensive content for each topic group
+    const results = await processAllTopicGroups(consolidatedTopics, jobId);
+    console.log(`Generated content for ${results.length} topic groups`);
+
+    // Step 3: Create and store files
+    const generatedResults = await generateAllFiles(results, jobId);
+    console.log(`Generated ${generatedResults.length} file categories`);
+
+    // Step 4: Complete the job
+    const totalFiles = generatedResults.reduce((sum, cat) => sum + cat.fileCount, 0);
+    await completeJob(jobId, totalFiles);
 
     console.log('Autonomous processing completed successfully');
 
