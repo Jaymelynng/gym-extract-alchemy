@@ -32,7 +32,22 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileSelect, isProcessing, cla
 
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const file = e.dataTransfer.files[0];
-      if (file.type === 'application/pdf') {
+      const supportedTypes = [
+        'application/pdf',
+        'text/plain',
+        'text/markdown',
+        'text/html',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'text/rtf',
+        'application/rtf'
+      ];
+      
+      if (supportedTypes.includes(file.type) || 
+          file.name.toLowerCase().endsWith('.md') || 
+          file.name.toLowerCase().endsWith('.txt') ||
+          file.name.toLowerCase().endsWith('.html') ||
+          file.name.toLowerCase().endsWith('.rtf')) {
         setSelectedFile(file);
         onFileSelect(file);
       }
@@ -65,7 +80,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileSelect, isProcessing, cla
         >
           <input
             type="file"
-            accept=".pdf"
+            accept=".pdf,.txt,.md,.html,.rtf,.doc,.docx"
             onChange={handleFileSelect}
             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
             disabled={isProcessing}
@@ -103,9 +118,9 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileSelect, isProcessing, cla
                   <Upload className="h-10 w-10 text-primary" />
                 </div>
                 <div className="space-y-2">
-                  <h3 className="text-lg font-semibold">Drop your gymnastics PDF here</h3>
+                  <h3 className="text-lg font-semibold">Drop your document here</h3>
                   <p className="text-sm text-muted-foreground max-w-xs">
-                    Or click to browse files. Only PDF files are supported.
+                    Or click to browse files. Supports PDF, TXT, Markdown, HTML, RTF, and Word documents.
                   </p>
                 </div>
                 <Button variant="outline" size="sm" className="mt-4">
