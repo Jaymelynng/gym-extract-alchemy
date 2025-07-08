@@ -40,14 +40,17 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileSelect, isProcessing, cla
         'application/msword',
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         'text/rtf',
-        'application/rtf'
+        'application/rtf',
+        'application/zip',
+        'application/x-zip-compressed'
       ];
       
       if (supportedTypes.includes(file.type) || 
           file.name.toLowerCase().endsWith('.md') || 
           file.name.toLowerCase().endsWith('.txt') ||
           file.name.toLowerCase().endsWith('.html') ||
-          file.name.toLowerCase().endsWith('.rtf')) {
+          file.name.toLowerCase().endsWith('.rtf') ||
+          file.name.toLowerCase().endsWith('.zip')) {
         setSelectedFile(file);
         onFileSelect(file);
       }
@@ -80,7 +83,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileSelect, isProcessing, cla
         >
           <input
             type="file"
-            accept=".pdf,.txt,.md,.html,.rtf,.doc,.docx"
+            accept=".pdf,.txt,.md,.html,.rtf,.doc,.docx,.zip"
             onChange={handleFileSelect}
             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
             disabled={isProcessing}
@@ -118,9 +121,9 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileSelect, isProcessing, cla
                   <Upload className="h-10 w-10 text-primary" />
                 </div>
                 <div className="space-y-2">
-                  <h3 className="text-lg font-semibold">Drop your document here</h3>
+                  <h3 className="text-lg font-semibold">Drop your documents here</h3>
                   <p className="text-sm text-muted-foreground max-w-xs">
-                    Or click to browse files. Supports PDF, TXT, Markdown, HTML, RTF, and Word documents.
+                    Or click to browse files. Supports individual documents or ZIP files for batch processing.
                   </p>
                 </div>
                 <Button variant="outline" size="sm" className="mt-4">
