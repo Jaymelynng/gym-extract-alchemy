@@ -1,11 +1,17 @@
 
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.50.3';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+const supabase = createClient(
+  Deno.env.get('SUPABASE_URL') ?? '',
+  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+);
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -21,6 +27,21 @@ serve(async (req) => {
     }
 
     console.log(`Processing file: ${file.name}, type: ${file.type}, size: ${file.size}`);
+
+    // Create processing job record
+    const { data: job, error: jobError } = await supabase
+      .from('processing_jobs')
+      .insert({
+        file_name: file.name,
+        file_size: file.size,
+        status: 'processing'
+      })
+      .select()
+      .single();
+
+    if (jobError) {
+      throw new Error(`Failed to create job: ${jobError.message}`);
+    }
 
     let textContent = '';
     let fileCount = 1;
@@ -134,9 +155,41 @@ serve(async (req) => {
       }));
     }
 
+    // Store topics in database
+    const topicInserts = analysisResult.topics.map((topic: any) => ({
+      job_id: job.id,
+      name: topic.name,
+      confidence: topic.confidence / 100, // Convert percentage to decimal
+      keywords: topic.keywords,
+      pages: topic.pages,
+      content_type: topic.contentType,
+      sentiment: topic.sentiment,
+      language: topic.language
+    }));
+
+    const { error: topicsError } = await supabase
+      .from('detected_topics')
+      .insert(topicInserts);
+
+    if (topicsError) {
+      console.error('Failed to save topics:', topicsError.message);
+    }
+
+    // Update job with completion status
+    await supabase
+      .from('processing_jobs')
+      .update({ 
+        status: 'completed',
+        total_content: analysisResult.totalContent 
+      })
+      .eq('id', job.id);
+
     console.log('Analysis completed successfully');
 
-    return new Response(JSON.stringify(analysisResult), {
+    return new Response(JSON.stringify({
+      ...analysisResult,
+      jobId: job.id
+    }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 

@@ -1,11 +1,17 @@
 
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.50.3';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+const supabase = createClient(
+  Deno.env.get('SUPABASE_URL') ?? '',
+  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+);
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -13,9 +19,17 @@ serve(async (req) => {
   }
 
   try {
-    const { topics, fileName } = await req.json();
+    const { topics, fileName, jobId } = await req.json();
     
     console.log(`Starting autonomous processing for ${topics.length} topics from ${fileName}`);
+    
+    // Update job to autonomous mode
+    if (jobId) {
+      await supabase
+        .from('processing_jobs')
+        .update({ autonomous_mode: true })
+        .eq('id', jobId);
+    }
 
     // Generate outputs for each topic using GPT-4.1
     const results = [];
@@ -67,42 +81,89 @@ serve(async (req) => {
       await new Promise(resolve => setTimeout(resolve, 100));
     }
 
-    // Simulate file generation and create mock download URLs
-    const mockResults = [
-      {
-        id: 'social-media',
-        title: 'Social Media Content',
-        description: 'Ready-to-post content with hashtags',
-        fileCount: results.length * 3,
-        totalSize: '2.3 MB',
-        files: results.slice(0, 3).map((result, i) => ({
-          name: `${result.topic.toLowerCase().replace(/\s+/g, '_')}_social_${i + 1}.txt`,
-          type: 'txt',
-          size: '45 KB',
-          downloadUrl: '#'
-        }))
-      },
-      {
-        id: 'ai-chunks',
-        title: 'AI-Ready Chunks',
-        description: 'Perfect for ChatGPT and Claude',
-        fileCount: results.length * 5,
-        totalSize: '890 KB',
-        files: results.slice(0, 2).map((result, i) => ({
-          name: `${result.topic.toLowerCase().replace(/\s+/g, '_')}_chunks_${i + 1}.zip`,
-          type: 'zip',
-          size: '234 KB',
-          downloadUrl: '#'
-        }))
-      }
+    // Generate and store files for each content type
+    const contentCategories = [
+      { id: 'social-media', title: 'Social Media Content', description: 'Ready-to-post content with hashtags' },
+      { id: 'ai-chunks', title: 'AI-Ready Chunks', description: 'Perfect for ChatGPT and Claude' },
+      { id: 'summaries', title: 'Topic Summaries', description: 'Concise overviews and key points' }
     ];
+
+    const generatedResults = [];
+
+    for (const category of contentCategories) {
+      const categoryFiles = [];
+      
+      for (const result of results) {
+        // Create file content based on category
+        let fileContent = '';
+        let fileExtension = 'txt';
+        
+        if (category.id === 'social-media') {
+          fileContent = `Social Media Content for: ${result.topic}\n\n${result.content}\n\n#contentcreation #AI #topics`;
+        } else if (category.id === 'ai-chunks') {
+          fileContent = result.content;
+          fileExtension = 'json';
+        } else {
+          fileContent = `Summary: ${result.topic}\n\n${result.content.substring(0, 500)}...`;
+        }
+
+        const fileName = `${result.topic.toLowerCase().replace(/\s+/g, '_')}_${category.id}.${fileExtension}`;
+        const filePath = `${jobId || 'unknown'}/${category.id}/${fileName}`;
+        
+        // Upload to Supabase Storage
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('document-processing')
+          .upload(filePath, new Blob([fileContent], { type: 'text/plain' }), {
+            cacheControl: '3600',
+            upsert: true
+          });
+
+        if (!uploadError && uploadData) {
+          // Get public URL
+          const { data: { publicUrl } } = supabase.storage
+            .from('document-processing')
+            .getPublicUrl(filePath);
+
+          // Store metadata in database
+          await supabase
+            .from('generated_content')
+            .insert({
+              job_id: jobId,
+              category: category.id,
+              title: result.topic,
+              description: category.description,
+              file_name: fileName,
+              file_path: filePath,
+              file_type: fileExtension,
+              file_size: `${Math.round(fileContent.length / 1024)} KB`
+            });
+
+          categoryFiles.push({
+            name: fileName,
+            type: fileExtension,
+            size: `${Math.round(fileContent.length / 1024)} KB`,
+            downloadUrl: publicUrl
+          });
+        }
+      }
+
+      generatedResults.push({
+        id: category.id,
+        title: category.title,
+        description: category.description,
+        fileCount: categoryFiles.length,
+        totalSize: `${Math.round(categoryFiles.reduce((acc, file) => acc + parseInt(file.size), 0))} KB`,
+        files: categoryFiles
+      });
+    }
 
     console.log('Autonomous processing completed successfully');
 
     return new Response(JSON.stringify({
       success: true,
-      results: mockResults,
-      processedTopics: results.length
+      results: generatedResults,
+      processedTopics: results.length,
+      jobId
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

@@ -28,11 +28,13 @@ interface DetectedTopic {
 
 interface AutonomousProcessingStatusProps {
   topics: DetectedTopic[];
+  jobId?: string;
   onComplete: () => void;
 }
 
 const AutonomousProcessingStatus: React.FC<AutonomousProcessingStatusProps> = ({ 
   topics, 
+  jobId,
   onComplete 
 }) => {
   const [currentStep, setCurrentStep] = useState(0);
@@ -67,7 +69,8 @@ const AutonomousProcessingStatus: React.FC<AutonomousProcessingStatusProps> = ({
         const { data, error: apiError } = await supabase.functions.invoke('autonomous-process', {
           body: { 
             topics: topics,
-            fileName: 'document.pdf' // Would be actual filename in real implementation
+            fileName: 'document.pdf', // Would be actual filename in real implementation
+            jobId
           }
         });
 

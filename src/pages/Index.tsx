@@ -8,6 +8,7 @@ import AutonomousProcessingStatus from '@/components/AutonomousProcessingStatus'
 import HeroSection from '@/components/HeroSection';
 import FeaturesGrid from '@/components/FeaturesGrid';
 import UploadSection from '@/components/UploadSection';
+import JobHistory from '@/components/JobHistory';
 import { useProcessingSteps } from '@/hooks/useProcessingSteps';
 import { DetectedTopic, ExtractionOptions as ExtractionOptionsType, AppStep } from '@/types';
 import { mockResults } from '@/data/mockResults';
@@ -22,6 +23,7 @@ const Index = () => {
   const [detectedTopics, setDetectedTopics] = useState<DetectedTopic[]>([]);
   const [extractionPlan, setExtractionPlan] = useState<string[]>([]);
   const [totalContent, setTotalContent] = useState(0);
+  const [currentJobId, setCurrentJobId] = useState<string | null>(null);
 
   const {
     processingSteps,
@@ -40,10 +42,12 @@ const Index = () => {
     topics: DetectedTopic[];
     extractionPlan: string[];
     totalContent: number;
+    jobId?: string;
   }) => {
     setDetectedTopics(results.topics);
     setExtractionPlan(results.extractionPlan);
     setTotalContent(results.totalContent);
+    setCurrentJobId(results.jobId || null);
     setCurrentStep('topics');
   };
 
@@ -130,6 +134,7 @@ const Index = () => {
         <div className="py-12">
           <AutonomousProcessingStatus
             topics={detectedTopics}
+            jobId={currentJobId || undefined}
             onComplete={handleAutonomousComplete}
           />
         </div>
@@ -148,7 +153,7 @@ const Index = () => {
       )}
 
       {currentStep === 'results' && (
-        <div className="max-w-6xl mx-auto px-4 py-12">
+        <div className="max-w-6xl mx-auto px-4 py-12 space-y-8">
           <ResultsDownload
             results={mockResults}
             onDownloadFile={(url, name) => console.log('Download file:', name)}
@@ -156,6 +161,7 @@ const Index = () => {
             onDownloadAll={() => console.log('Download all')}
             onShare={(id) => console.log('Share category:', id)}
           />
+          <JobHistory />
         </div>
       )}
     </div>

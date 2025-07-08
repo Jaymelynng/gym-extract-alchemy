@@ -14,7 +14,143 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      detected_topics: {
+        Row: {
+          confidence: number
+          content_type: string
+          created_at: string
+          id: string
+          job_id: string
+          keywords: string[]
+          language: string
+          name: string
+          pages: number[]
+          sentiment: string
+        }
+        Insert: {
+          confidence: number
+          content_type: string
+          created_at?: string
+          id?: string
+          job_id: string
+          keywords?: string[]
+          language?: string
+          name: string
+          pages?: number[]
+          sentiment: string
+        }
+        Update: {
+          confidence?: number
+          content_type?: string
+          created_at?: string
+          id?: string
+          job_id?: string
+          keywords?: string[]
+          language?: string
+          name?: string
+          pages?: number[]
+          sentiment?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "detected_topics_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "processing_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      generated_content: {
+        Row: {
+          category: string
+          created_at: string
+          description: string | null
+          file_name: string
+          file_path: string
+          file_size: string
+          file_type: string
+          id: string
+          job_id: string
+          title: string
+          topic_id: string | null
+        }
+        Insert: {
+          category: string
+          created_at?: string
+          description?: string | null
+          file_name: string
+          file_path: string
+          file_size: string
+          file_type: string
+          id?: string
+          job_id: string
+          title: string
+          topic_id?: string | null
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          description?: string | null
+          file_name?: string
+          file_path?: string
+          file_size?: string
+          file_type?: string
+          id?: string
+          job_id?: string
+          title?: string
+          topic_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "generated_content_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "processing_jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "generated_content_topic_id_fkey"
+            columns: ["topic_id"]
+            isOneToOne: false
+            referencedRelation: "detected_topics"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      processing_jobs: {
+        Row: {
+          autonomous_mode: boolean | null
+          created_at: string
+          file_name: string
+          file_size: number
+          id: string
+          status: string
+          total_content: number | null
+          updated_at: string
+        }
+        Insert: {
+          autonomous_mode?: boolean | null
+          created_at?: string
+          file_name: string
+          file_size: number
+          id?: string
+          status?: string
+          total_content?: number | null
+          updated_at?: string
+        }
+        Update: {
+          autonomous_mode?: boolean | null
+          created_at?: string
+          file_name?: string
+          file_size?: number
+          id?: string
+          status?: string
+          total_content?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

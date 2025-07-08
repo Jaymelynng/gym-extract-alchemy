@@ -35,6 +35,7 @@ interface AutonomousScannerProps {
     topics: DetectedTopic[];
     extractionPlan: string[];
     totalContent: number;
+    jobId?: string;
   }) => void;
 }
 
@@ -147,7 +148,8 @@ const AutonomousScanner: React.FC<AutonomousScannerProps> = ({ file, onComplete 
             'Social media content',
             'Keyword databases'
           ],
-          totalContent: data.totalContent || 0
+          totalContent: data.totalContent || 0,
+          jobId: data.jobId
         });
 
       } catch (err) {
