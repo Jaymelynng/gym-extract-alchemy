@@ -17,11 +17,33 @@ const SimpleUpload: React.FC<SimpleUploadProps> = ({ onUploadComplete }) => {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadedFiles, setUploadedFiles] = useState<{ original: string; summary?: string }[]>([]);
+  const [dragActive, setDragActive] = useState(false);
   const { toast } = useToast();
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || []);
-    setSelectedFiles(files);
+    setSelectedFiles(prev => [...prev, ...files]);
+  };
+
+  const handleDrag = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true);
+    } else if (e.type === "dragleave") {
+      setDragActive(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const files = Array.from(e.dataTransfer.files);
+      setSelectedFiles(prev => [...prev, ...files]);
+    }
   };
 
   const uploadFile = async (file: File) => {
@@ -131,33 +153,84 @@ const SimpleUpload: React.FC<SimpleUploadProps> = ({ onUploadComplete }) => {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div>
+          <div
+            className={`relative border-2 border-dashed rounded-xl p-8 text-center transition-all duration-300 ${
+              dragActive 
+                ? "border-primary bg-primary/5 scale-105" 
+                : "border-muted-foreground/25 hover:border-primary/50 hover:bg-primary/5"
+            } ${isUploading ? "pointer-events-none opacity-50" : ""}`}
+            onDragEnter={handleDrag}
+            onDragLeave={handleDrag}
+            onDragOver={handleDrag}
+            onDrop={handleDrop}
+          >
             <input
               type="file"
               multiple
               accept=".pdf,.txt,.md,.html,.rtf,.doc,.docx,.zip"
               onChange={handleFileSelect}
-              className="mb-4"
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
               disabled={isUploading}
             />
             
-            {selectedFiles.length > 0 && (
+            <div className="flex flex-col items-center space-y-4">
+              <div className="p-4 rounded-full bg-primary/10">
+                <Upload className="h-10 w-10 text-primary" />
+              </div>
               <div className="space-y-2">
+                <h3 className="text-lg font-semibold">
+                  {dragActive ? "Drop your documents here!" : "Drag & Drop Multiple Documents"}
+                </h3>
+                <p className="text-sm text-muted-foreground max-w-xs">
+                  Or click to browse files. Supports PDF, TXT, MD, HTML, RTF, DOC, DOCX, ZIP
+                </p>
+              </div>
+              {selectedFiles.length === 0 && (
+                <Button variant="outline" size="sm" className="mt-4">
+                  Browse Files
+                </Button>
+              )}
+            </div>
+          </div>
+            
+          {selectedFiles.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
                 <p className="text-sm text-muted-foreground">
                   Selected {selectedFiles.length} file(s):
                 </p>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => setSelectedFiles([])}
+                  disabled={isUploading}
+                >
+                  Clear All
+                </Button>
+              </div>
+              <div className="max-h-40 overflow-y-auto space-y-1">
                 {selectedFiles.map((file, index) => (
-                  <div key={index} className="flex items-center gap-2 text-sm">
-                    <File className="h-4 w-4" />
-                    <span>{file.name}</span>
-                    <span className="text-muted-foreground">
-                      ({(file.size / (1024 * 1024)).toFixed(1)} MB)
-                    </span>
+                  <div key={index} className="flex items-center justify-between p-2 border rounded">
+                    <div className="flex items-center gap-2 text-sm">
+                      <File className="h-4 w-4" />
+                      <span>{file.name}</span>
+                      <span className="text-muted-foreground">
+                        ({(file.size / (1024 * 1024)).toFixed(1)} MB)
+                      </span>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setSelectedFiles(prev => prev.filter((_, i) => i !== index))}
+                      disabled={isUploading}
+                    >
+                      ×
+                    </Button>
                   </div>
                 ))}
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
           <div className="flex items-center space-x-2">
             <Checkbox
